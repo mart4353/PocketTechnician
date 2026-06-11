@@ -26,8 +26,8 @@ Success must be an **observable result** (OS reports "Connected", a webpage load
 
 | # | Component | Description |
 |---|-----------|-------------|
-| 1 | Split-screen UI (Compose) | Dashboard (model field, Automation slider, Effort slider, STOP, Share internet) + chat with voice input, approval buttons |
-| 2 | User-initiated photos | Shutter button + subject chips (Screen / Wi-Fi info / Device label / Other); agent requests photos via `request_photo` |
+| 1 | 6-tab UI (Compose) | Dashboard (model, Automation + Effort sliders, Photo Resolution, STOP, Share internet), Conversations, Chat, Take Photo, Gallery, Voice |
+| 2 | User-initiated photos | Take Photo tab (camera) + Gallery tab (existing photos); agent requests photos via `request_photo`; default resolution MAX (no downscaling) |
 | 3 | Bluetooth control | Keyboard shortcuts, Tab/Shift+Tab, arrows, Enter/Escape, limited mouse movement and clicking |
 | 4 | Restricted action engine | The AI returns only approved action types; automation level gates execution; all actions are logged |
 | 5 | Outcome verification | Loop finishes only when a user photo shows the observable success signal |
@@ -49,15 +49,16 @@ Stack: Kotlin, Jetpack Compose, minSdk 33, CameraX, `BluetoothHidDevice`, `Speec
 - [ ] Hardcoded "smoke test" macro: open network settings on the test laptop via keyboard only
 
 ### M2 — Eyes + ears: photos and voice (hour 3–4)
-- [ ] Shutter button: one photo per press, attached to the conversation (CameraX)
-- [ ] Subject chips: Screen / Wi-Fi info / Device label / Other
-- [ ] Voice input via `SpeechRecognizer` (mic button in chat)
-- [ ] Photo (downscaled, base64) + task context sent to Claude; structured-output action returned
+- [ ] Take Photo tab: large Take Picture button (CameraX), photo auto-attached to the active conversation
+- [ ] Gallery tab: select existing photos from device storage, attached to the active conversation
+- [ ] Voice tab: text field, Record button (`SpeechRecognizer`), Submit button
+- [ ] Photo (base64, full resolution by default) + task context sent to Claude; structured-output action returned
 
-### M3 — Brain: agent loop + dashboard (hour 4–6)
+### M3 — Brain: agent loop + dashboard + conversations (hour 4–6)
 - [ ] Loop: propose action → automation gate → execute / `request_photo` pause → verify
 - [ ] Restricted action set only: press key, key combo, move pointer, click, type text, wait, request photo, ask user, request approval, finish
-- [ ] Dashboard: model field, Automation slider (Manual/Step/Standard/Autonomous), Effort slider (→ `output_config.effort`)
+- [ ] Dashboard: model field, Automation slider (Manual/Step/Standard/Autonomous), Effort slider (→ `output_config.effort`), Photo Resolution (default MAX)
+- [ ] Conversations tab: local storage (Room), New Conversation, background auto-naming by the model, tap to load into Chat
 - [ ] Action log visible in the app
 - [ ] Emergency stop halts the loop instantly
 

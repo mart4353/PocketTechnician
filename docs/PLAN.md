@@ -26,18 +26,21 @@ Success must be an **observable result** (OS reports "Connected", a webpage load
 
 | # | Component | Description |
 |---|-----------|-------------|
-| 1 | Phone chat interface | User request, technician explanation, current action, approval buttons, emergency stop |
-| 2 | Camera observation | Periodic screen images + multimodal AI screen interpretation |
+| 1 | Split-screen UI (Compose) | Dashboard (model field, Automation slider, Effort slider, STOP, Share internet) + chat with voice input, approval buttons |
+| 2 | User-initiated photos | Shutter button + subject chips (Screen / Wi-Fi info / Device label / Other); agent requests photos via `request_photo` |
 | 3 | Bluetooth control | Keyboard shortcuts, Tab/Shift+Tab, arrows, Enter/Escape, limited mouse movement and clicking |
-| 4 | Restricted action engine | The AI returns only approved action types; all actions are logged |
-| 5 | Outcome verification | Check whether the requested result was actually achieved |
+| 4 | Restricted action engine | The AI returns only approved action types; automation level gates execution; all actions are logged |
+| 5 | Outcome verification | Loop finishes only when a user photo shows the observable success signal |
+
+Stack: Kotlin, Jetpack Compose, minSdk 33, CameraX, `BluetoothHidDevice`, `SpeechRecognizer`, Anthropic Java SDK with `claude-opus-4-8` (BYOK API key in app settings). See [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Milestones
 
 ### M0 — Foundations (hour 0–1)
-- [ ] Android project skeleton (single-activity app, camera permission, Bluetooth permissions)
+- [ ] Android project skeleton (Kotlin, Compose, minSdk 33; camera + Bluetooth permissions)
 - [ ] Confirm test laptop accepts Bluetooth HID pairing from the dev phone
-- [ ] AI API key + multimodal call working from the phone (image in → JSON action out)
+- [ ] Settings screen: paste API key → `EncryptedSharedPreferences`
+- [ ] Claude call working from the phone via Anthropic Java SDK (image in → structured-output action JSON out)
 
 ### M1 — Hands: Bluetooth HID (hour 1–3)
 - [ ] Register the phone as a Bluetooth HID keyboard/mouse (`BluetoothHidDevice` API)
@@ -45,14 +48,16 @@ Success must be an **observable result** (OS reports "Connected", a webpage load
 - [ ] Send relative mouse movement and clicks
 - [ ] Hardcoded "smoke test" macro: open network settings on the test laptop via keyboard only
 
-### M2 — Eyes: camera + screen reading (hour 3–4)
-- [ ] Periodic camera capture of the computer screen
-- [ ] Send the frame to the multimodal model with the task context
-- [ ] Model returns: what it sees + next action in the restricted action schema
+### M2 — Eyes + ears: photos and voice (hour 3–4)
+- [ ] Shutter button: one photo per press, attached to the conversation (CameraX)
+- [ ] Subject chips: Screen / Wi-Fi info / Device label / Other
+- [ ] Voice input via `SpeechRecognizer` (mic button in chat)
+- [ ] Photo (downscaled, base64) + task context sent to Claude; structured-output action returned
 
-### M3 — Brain: agent loop + restricted actions (hour 4–6)
-- [ ] Loop: capture → interpret → propose action → (approve) → execute → re-capture
-- [ ] Restricted action set only: press key, key combo, move pointer, click, type text, wait, ask user, request approval, finish
+### M3 — Brain: agent loop + dashboard (hour 4–6)
+- [ ] Loop: propose action → automation gate → execute / `request_photo` pause → verify
+- [ ] Restricted action set only: press key, key combo, move pointer, click, type text, wait, request photo, ask user, request approval, finish
+- [ ] Dashboard: model field, Automation slider (Manual/Step/Standard/Autonomous), Effort slider (→ `output_config.effort`)
 - [ ] Action log visible in the app
 - [ ] Emergency stop halts the loop instantly
 
@@ -63,7 +68,6 @@ Success must be an **observable result** (OS reports "Connected", a webpage load
 - [ ] Rehearse the demo twice; record a backup video
 
 ### Stretch (only if time remains)
-- Voice input for the problem description
 - Login-screen control (experimental)
 - BIOS/UEFI keyboard input test (bonus)
 

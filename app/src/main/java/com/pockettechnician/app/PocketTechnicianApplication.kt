@@ -4,6 +4,7 @@ import android.app.Application
 import com.pockettechnician.app.data.ai.AiPreferencesStore
 import com.pockettechnician.app.data.ai.ApiKeyStore
 import com.pockettechnician.app.data.ai.ModelRepository
+import com.pockettechnician.app.hid.HidManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -16,6 +17,8 @@ class PocketTechnicianApplication : Application() {
         private set
     lateinit var modelRepository: ModelRepository
         private set
+    lateinit var hidManager: HidManager
+        private set
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -24,6 +27,7 @@ class PocketTechnicianApplication : Application() {
         apiKeyStore = ApiKeyStore(this)
         aiPreferencesStore = AiPreferencesStore(this)
         modelRepository = ModelRepository(apiKeyStore, aiPreferencesStore)
+        hidManager = HidManager(this)
 
         applicationScope.launch {
             modelRepository.loadCachedModels()

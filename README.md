@@ -66,9 +66,16 @@ The app is Kotlin + Jetpack Compose, minSdk 33. The 6-tab navigation uses Materi
 
 ## Documentation
 
+- [docs/DEPLOY.md](docs/DEPLOY.md) — USB debug install, release APK for demos, Play Store notes
 - [docs/PLAN.md](docs/PLAN.md) — hackathon MVP plan, milestones, and task breakdown
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system architecture and the agent control loop
 - [docs/SAFETY.md](docs/SAFETY.md) — safety requirements and restricted action set
+
+Quick dev install on a USB-connected device:
+
+```bash
+./scripts/install-debug.sh
+```
 
 ## Status
 

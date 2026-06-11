@@ -26,6 +26,7 @@ venv/
 .env*
 secrets.properties
 apikeys.properties
+keystore.properties
 
 # OS
 .DS_Store

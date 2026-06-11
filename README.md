@@ -53,6 +53,17 @@ The user must remain in control at all times:
 
 See [docs/SAFETY.md](docs/SAFETY.md) for the full safety model.
 
+## Building
+
+Requirements: JDK 17 and the Android SDK (platform 35, build-tools 35.0.0). Point `local.properties` (or `ANDROID_HOME`) at your SDK, then:
+
+```bash
+./gradlew assembleDebug
+# APK lands in app/build/outputs/apk/debug/app-debug.apk
+```
+
+The app is Kotlin + Jetpack Compose, minSdk 33. The 6-tab navigation uses Material 3's `NavigationSuiteScaffold`, so it renders as a bottom bar on phones and a navigation rail in landscape/on tablets automatically. `gradle.properties` ships with conservative JVM heap limits so builds survive on low-RAM machines — raise them locally if your hardware allows.
+
 ## Documentation
 
 - [docs/PLAN.md](docs/PLAN.md) — hackathon MVP plan, milestones, and task breakdown
@@ -61,6 +72,6 @@ See [docs/SAFETY.md](docs/SAFETY.md) for the full safety model.
 
 ## Status
 
-Pre-hackathon planning. The MVP goal is to prove one complete support loop:
+**UI mockup stage.** The app compiles and shows all six tabs (Dashboard, Conversations, Chat, Take Photo, Gallery, Voice) with responsive mock screens — no camera, Bluetooth HID, or AI wiring yet. The MVP goal is to prove one complete support loop:
 
 > **See the problem → understand it → act on the computer → verify the result.**

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
@@ -18,6 +19,7 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -33,6 +35,7 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
@@ -52,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pockettechnician.app.PocketTechnicianApplication
 import com.pockettechnician.app.data.ai.AiProvider
+import com.pockettechnician.app.hid.HidState
 import com.pockettechnician.app.ui.dashboard.DashboardViewModel
 import kotlin.math.roundToInt
 
@@ -76,6 +80,7 @@ fun DashboardScreen() {
     val application = LocalContext.current.applicationContext as PocketTechnicianApplication
     val viewModel: DashboardViewModel = viewModel(factory = DashboardViewModel.Factory(application))
     val uiState by viewModel.uiState.collectAsState()
+    val hid by application.hidManager.state.collectAsState()
 
     var automation by rememberSaveable(key = "automationV2") { mutableFloatStateOf(0f) }
     var effort by rememberSaveable { mutableFloatStateOf(2f) }
@@ -92,13 +97,13 @@ fun DashboardScreen() {
     }
 
     ScreenContainer(title = "Dashboard") {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AssistChip(
-                onClick = {},
-                label = { Text("HID: Not connected") },
-                leadingIcon = { Icon(Icons.Filled.Bluetooth, contentDescription = null) },
-            )
-        }
+        HidConnectionPanel(
+            hid = hid,
+            onStart = { application.hidManager.start() },
+            onRefresh = { application.hidManager.refreshBondedHosts() },
+            onConnect = { application.hidManager.connect(it) },
+            onDisconnect = { application.hidManager.disconnect() },
+        )
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
@@ -300,6 +305,72 @@ fun DashboardScreen() {
             onSave = viewModel::saveApiKey,
             onClear = viewModel::clearApiKey,
         )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun HidConnectionPanel(
+    hid: HidState,
+    onStart: () -> Unit,
+    onRefresh: () -> Unit,
+    onConnect: (String) -> Unit,
+    onDisconnect: () -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = if (hid.connected) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            },
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    if (hid.connected) Icons.Filled.BluetoothConnected else Icons.Filled.Bluetooth,
+                    contentDescription = null,
+                )
+                Text(
+                    text = "  HID: ${hid.status}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            if (!hid.registered) {
+                Button(onClick = onStart, modifier = Modifier.fillMaxWidth()) {
+                    Text("Start HID service")
+                }
+            } else if (hid.connected) {
+                OutlinedButton(onClick = onDisconnect, modifier = Modifier.fillMaxWidth()) {
+                    Text("Disconnect")
+                }
+            } else {
+                Text(
+                    "Pick the computer to control:",
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    hid.bondedHosts.forEach { host ->
+                        AssistChip(
+                            onClick = { onConnect(host.address) },
+                            label = { Text(host.name) },
+                            leadingIcon = { Icon(Icons.Filled.Bluetooth, contentDescription = null) },
+                        )
+                    }
+                }
+                TextButton(onClick = onRefresh) {
+                    Text("Refresh paired devices")
+                }
+            }
+        }
     }
 }
 

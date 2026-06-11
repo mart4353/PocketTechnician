@@ -1,0 +1,33 @@
+# Android / Gradle
+*.apk
+*.aab
+*.ap_
+*.dex
+build/
+.gradle/
+local.properties
+captures/
+*.keystore
+*.jks
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Python (prototyping/tooling)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Secrets — never commit API keys
+*.env
+.env*
+secrets.properties
+apikeys.properties
+
+# OS
+.DS_Store
+Thumbs.db
+.claude/settings.local.json

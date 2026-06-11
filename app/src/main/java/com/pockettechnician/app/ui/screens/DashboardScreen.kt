@@ -34,6 +34,7 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -45,6 +46,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pockettechnician.app.PocketTechnicianApplication
@@ -52,8 +55,20 @@ import com.pockettechnician.app.data.ai.AiProvider
 import com.pockettechnician.app.ui.dashboard.DashboardViewModel
 import kotlin.math.roundToInt
 
-private val automationLevels = listOf("Manual", "Step", "Standard", "Autonomous")
-private val effortLevels = listOf("low", "medium", "high", "max")
+private data class SliderLevel(val label: String, val description: String)
+
+private val automationLevels = listOf(
+    SliderLevel("Manual", "Every single action needs a tap"),
+    SliderLevel("Step", "One approval per proposed step"),
+    SliderLevel("Standard", "Safe actions run automatically; sensitive ones ask"),
+    SliderLevel("Automatic", "Everything runs automatically except the safety gates"),
+)
+private val effortLevels = listOf(
+    SliderLevel("low", "Maps to Claude output_config.effort"),
+    SliderLevel("medium", "Maps to Claude output_config.effort"),
+    SliderLevel("high", "Maps to Claude output_config.effort"),
+    SliderLevel("max", "Maps to Claude output_config.effort"),
+)
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -62,7 +77,7 @@ fun DashboardScreen() {
     val viewModel: DashboardViewModel = viewModel(factory = DashboardViewModel.Factory(application))
     val uiState by viewModel.uiState.collectAsState()
 
-    var automation by rememberSaveable { mutableFloatStateOf(0f) }
+    var automation by rememberSaveable(key = "automationV2") { mutableFloatStateOf(0f) }
     var effort by rememberSaveable { mutableFloatStateOf(2f) }
     var photoResolution by rememberSaveable { mutableIntStateOf(0) }
     var modelMenuExpanded by rememberSaveable { mutableStateOf(false) }
@@ -228,21 +243,14 @@ fun DashboardScreen() {
                 levels = effortLevels,
                 value = effort,
                 onValueChange = { effort = it },
-                description = "Maps to Claude output_config.effort",
             )
         }
 
         SliderCard(
-            title = "Automation",
+            title = "Automatic",
             levels = automationLevels,
             value = automation,
             onValueChange = { automation = it },
-            description = when (automation.roundToInt()) {
-                0 -> "Every single action needs a tap"
-                1 -> "One approval per proposed step"
-                2 -> "Safe actions run automatically; sensitive ones ask"
-                else -> "Everything runs automatically except the safety gates"
-            },
         )
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -298,37 +306,49 @@ fun DashboardScreen() {
 @Composable
 private fun SliderCard(
     title: String,
-    levels: List<String>,
+    levels: List<SliderLevel>,
     value: Float,
     onValueChange: (Float) -> Unit,
-    description: String,
 ) {
+    val index = value.roundToInt().coerceIn(0, levels.lastIndex)
+    val level = levels[index]
+
     Card {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        level.label,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Slider(
+                    value = value,
+                    onValueChange = onValueChange,
+                    valueRange = 0f..levels.lastIndex.toFloat(),
+                    steps = levels.size - 2,
+                )
                 Text(
-                    levels[value.roundToInt().coerceIn(0, levels.lastIndex)],
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
+                    level.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Slider(
-                value = value,
-                onValueChange = onValueChange,
-                valueRange = 0f..levels.lastIndex.toFloat(),
-                steps = levels.size - 2,
-            )
-            Text(
-                description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }

@@ -4,6 +4,7 @@ set -euo pipefail
 
 source "$(dirname "$0")/env.sh"
 cd "$ROOT_DIR"
+trap gradle_stop EXIT
 
 OUTPUT_APK="$ROOT_DIR/app/build/outputs/apk/release/app-release.apk"
 

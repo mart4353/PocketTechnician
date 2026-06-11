@@ -38,3 +38,9 @@ export JAVA_HOME
 export ANDROID_HOME="$SDK_DIR"
 export ANDROID_SDK_ROOT="$SDK_DIR"
 export PATH="$JAVA_HOME/bin:$SDK_DIR/platform-tools:$ROOT_DIR:$PATH"
+
+# Stop Gradle/Kotlin daemons after builds to free RAM on low-memory machines.
+gradle_stop() {
+    echo "==> Stopping Gradle daemons (freeing memory)"
+    (cd "$ROOT_DIR" && ./gradlew --stop) >/dev/null 2>&1 || true
+}

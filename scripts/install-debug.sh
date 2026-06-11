@@ -4,6 +4,7 @@ set -euo pipefail
 
 source "$(dirname "$0")/env.sh"
 cd "$ROOT_DIR"
+trap gradle_stop EXIT
 
 LAUNCH=1
 if [[ "${1:-}" == "--no-launch" ]]; then

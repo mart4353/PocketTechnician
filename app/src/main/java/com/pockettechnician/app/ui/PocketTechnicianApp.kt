@@ -55,7 +55,9 @@ fun PocketTechnicianApp() {
     ) {
         when (currentTab) {
             TechnicianTab.Dashboard -> DashboardScreen()
-            TechnicianTab.Conversations -> ConversationsScreen()
+            TechnicianTab.Conversations -> ConversationsScreen(
+                onOpenChat = { currentTab = TechnicianTab.Chat },
+            )
             TechnicianTab.Chat -> ChatScreen()
             TechnicianTab.TakePhoto -> TakePhotoScreen()
             TechnicianTab.Gallery -> GalleryScreen()

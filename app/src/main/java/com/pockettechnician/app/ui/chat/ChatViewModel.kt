@@ -4,167 +4,160 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.pockettechnician.app.PocketTechnicianApplication
-import com.pockettechnician.app.hid.HidManager
+import com.pockettechnician.app.data.ai.AiModelSelection
+import com.pockettechnician.app.data.ai.AiPreferencesStore
+import com.pockettechnician.app.data.ai.ApiKeyStore
+import com.pockettechnician.app.data.chat.ChatClient
+import com.pockettechnician.app.data.chat.ChatMessage
+import com.pockettechnician.app.data.chat.ChatRole
+import com.pockettechnician.app.data.chat.ConversationRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-/** One entry rendered in the chat transcript. */
-sealed interface ChatItem {
-    val key: Long
-
-    data class Said(override val key: Long, val fromUser: Boolean, val text: String) : ChatItem
-
-    data class Proposal(
-        override val key: Long,
-        val label: String,
-        val detail: String,
-        val sensitive: Boolean,
-        val status: ProposalStatus,
-    ) : ChatItem
-}
-
-enum class ProposalStatus { Pending, Running, Done, Failed, Denied }
-
-/** What an approved proposal actually does over HID. */
-private sealed interface DemoAction {
-    data class Type(val text: String) : DemoAction
-    data class Move(val dx: Int, val dy: Int) : DemoAction
-}
-
-/** A scripted beat of the demo conversation. */
-private sealed interface Beat {
-    data class Say(val fromUser: Boolean, val text: String) : Beat
-    data class Propose(
-        val label: String,
-        val detail: String,
-        val sensitive: Boolean,
-        val action: DemoAction,
-    ) : Beat
-}
+data class ChatUiState(
+    val messages: List<ChatMessage> = emptyList(),
+    val conversationTitle: String? = null,
+    val isSending: Boolean = false,
+    val errorMessage: String? = null,
+    val modelLabel: String? = null,
+    val modelConfigured: Boolean = false,
+)
 
 /**
- * Drives the "Hello World! + move the mouse" demo: a scripted conversation
- * where each proposed HID action waits for the user's approval, then runs over
- * [HidManager]. Proposals only reveal the next beat once they complete, mirroring
- * the agent control loop (propose -> approve -> execute -> continue).
+ * Drives the Chat tab: sends the active conversation to the selected model
+ * and appends the reply. The active conversation lives in
+ * [ConversationRepository] so the Conversations tab sees the same state.
  */
-class ChatViewModel(private val hidManager: HidManager) : ViewModel() {
+class ChatViewModel(
+    private val repository: ConversationRepository,
+    private val chatClient: ChatClient,
+    private val apiKeyStore: ApiKeyStore,
+    private val aiPreferencesStore: AiPreferencesStore,
+) : ViewModel() {
 
-    private val script: List<Beat> = listOf(
-        Beat.Say(
-            fromUser = true,
-            text = "My PC is connected to this tablet over Bluetooth. Can you type a hello " +
-                "message and move the mouse to check that keyboard and pointer control work?",
-        ),
-        Beat.Say(
-            fromUser = false,
-            text = "Yes. The tablet is registered as a Bluetooth keyboard and mouse for this " +
-                "computer, so I can drive it directly. I'll do two actions — each waits for your approval.",
-        ),
-        Beat.Propose(
-            label = "type_text",
-            detail = "Type \"Hello World!\" into the focused window",
-            sensitive = false,
-            action = DemoAction.Type("Hello World!"),
-        ),
-        Beat.Say(
-            fromUser = false,
-            text = "Typed “Hello World!”. Now I'll reposition the pointer to (200, 120) to confirm mouse control.",
-        ),
-        Beat.Propose(
-            label = "move_pointer",
-            detail = "Move the pointer to (200, 120)",
-            sensitive = false,
-            action = DemoAction.Move(dx = 200, dy = 120),
-        ),
-        Beat.Say(
-            fromUser = false,
-            text = "Pointer moved. Keyboard and mouse output are both confirmed working over Bluetooth HID. ✅",
-        ),
+    private val isSending = MutableStateFlow(false)
+    private val errorMessage = MutableStateFlow<String?>(null)
+
+    private val modelState = combine(
+        aiPreferencesStore.selectedModel,
+        apiKeyStore.configuredProviders,
+    ) { selection, configured ->
+        ModelState(selection, selection != null && selection.provider in configured)
+    }
+
+    val uiState: StateFlow<ChatUiState> = combine(
+        repository.conversations,
+        repository.activeConversationId,
+        modelState,
+        isSending,
+        errorMessage,
+    ) { conversations, activeId, model, sending, error ->
+        val active = conversations.firstOrNull { it.id == activeId }
+        ChatUiState(
+            messages = active?.messages.orEmpty(),
+            conversationTitle = active?.title,
+            isSending = sending,
+            errorMessage = error,
+            modelLabel = model.selection?.modelId,
+            modelConfigured = model.configured,
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = ChatUiState(),
     )
 
-    private val _items = MutableStateFlow<List<ChatItem>>(emptyList())
-    val items: StateFlow<List<ChatItem>> = _items.asStateFlow()
-
-    private var scriptIndex = 0
-    private var nextKey = 0L
-    /** Action for the proposal currently awaiting approval, keyed by its item key. */
-    private var pendingAction: Pair<Long, DemoAction>? = null
-
-    init {
-        advance()
-    }
-
-    /** Append scripted beats until the next proposal (which waits for approval) or the end. */
-    private fun advance() {
-        while (scriptIndex < script.size) {
-            when (val beat = script[scriptIndex]) {
-                is Beat.Say -> {
-                    append(ChatItem.Said(nextKey++, beat.fromUser, beat.text))
-                    scriptIndex++
-                }
-                is Beat.Propose -> {
-                    val key = nextKey++
-                    append(
-                        ChatItem.Proposal(
-                            key = key,
-                            label = beat.label,
-                            detail = beat.detail,
-                            sensitive = beat.sensitive,
-                            status = ProposalStatus.Pending,
-                        ),
-                    )
-                    pendingAction = key to beat.action
-                    return
-                }
-            }
-        }
-    }
-
-    fun approve(key: Long) {
-        val pending = pendingAction ?: return
-        if (pending.first != key) return
-        updateProposal(key) { it.copy(status = ProposalStatus.Running) }
+    fun send(text: String) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty() || isSending.value) return
         viewModelScope.launch {
-            val ok = when (val action = pending.second) {
-                is DemoAction.Type -> hidManager.typeText(action.text)
-                is DemoAction.Move -> hidManager.movePointer(action.dx, action.dy)
+            val selection = aiPreferencesStore.selectedModel.first()
+            val apiKey = selection?.let { apiKeyStore.get(it.provider) }
+            if (selection == null || apiKey == null) {
+                errorMessage.value = "Select a model and add its API key on the Dashboard tab."
+                return@launch
             }
-            updateProposal(key) {
-                it.copy(status = if (ok) ProposalStatus.Done else ProposalStatus.Failed)
+            isSending.value = true
+            errorMessage.value = null
+            val conversationId = repository.activeConversationId.value
+                ?: repository.create().id
+            repository.appendMessage(conversationId, ChatMessage(ChatRole.USER, trimmed))
+            val history = repository.get(conversationId)?.messages.orEmpty()
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    chatClient.complete(
+                        provider = selection.provider,
+                        modelId = selection.modelId,
+                        apiKey = apiKey,
+                        messages = history,
+                        systemPrompt = SYSTEM_PROMPT,
+                    )
+                }
+            }.onSuccess { reply ->
+                repository.appendMessage(conversationId, ChatMessage(ChatRole.ASSISTANT, reply))
+                maybeAutoName(conversationId, selection, apiKey)
+            }.onFailure { error ->
+                errorMessage.value = error.message ?: "Request failed"
             }
-            if (ok) {
-                pendingAction = null
-                scriptIndex++
-                advance()
+            isSending.value = false
+        }
+    }
+
+    fun startNewConversation() {
+        viewModelScope.launch {
+            repository.create()
+            errorMessage.value = null
+        }
+    }
+
+    fun dismissError() {
+        errorMessage.value = null
+    }
+
+    /** Have the model name the conversation in the background after the first exchange. */
+    private fun maybeAutoName(
+        conversationId: String,
+        selection: AiModelSelection,
+        apiKey: String,
+    ) {
+        val conversation = repository.get(conversationId) ?: return
+        if (conversation.title != null) return
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val prompt = buildString {
+                    appendLine(
+                        "Write a short title (at most 6 words) for the tech-support " +
+                            "conversation below. Reply with the title only, no quotes.",
+                    )
+                    conversation.messages.take(4).forEach { message ->
+                        appendLine("${message.role.name.lowercase()}: ${message.text.take(500)}")
+                    }
+                }
+                chatClient.complete(
+                    provider = selection.provider,
+                    modelId = selection.modelId,
+                    apiKey = apiKey,
+                    messages = listOf(ChatMessage(ChatRole.USER, prompt)),
+                    maxTokens = 1024,
+                )
+            }.onSuccess { title ->
+                val cleaned = title.trim().trim('"').take(60)
+                if (cleaned.isNotBlank()) repository.setTitle(conversationId, cleaned)
             }
         }
     }
 
-    fun deny(key: Long) {
-        if (pendingAction?.first != key) return
-        updateProposal(key) { it.copy(status = ProposalStatus.Denied) }
-    }
-
-    /** Restart the demo from the top. */
-    fun reset() {
-        scriptIndex = 0
-        pendingAction = null
-        _items.value = emptyList()
-        advance()
-    }
-
-    private fun append(item: ChatItem) {
-        _items.value = _items.value + item
-    }
-
-    private fun updateProposal(key: Long, transform: (ChatItem.Proposal) -> ChatItem.Proposal) {
-        _items.value = _items.value.map { item ->
-            if (item is ChatItem.Proposal && item.key == key) transform(item) else item
-        }
-    }
+    private data class ModelState(
+        val selection: AiModelSelection?,
+        val configured: Boolean,
+    )
 
     class Factory(
         private val application: PocketTechnicianApplication,
@@ -172,9 +165,22 @@ class ChatViewModel(private val hidManager: HidManager) : ViewModel() {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(ChatViewModel::class.java)) {
-                return ChatViewModel(application.hidManager) as T
+                return ChatViewModel(
+                    application.conversationRepository,
+                    application.chatClient,
+                    application.apiKeyStore,
+                    application.aiPreferencesStore,
+                ) as T
             }
             throw IllegalArgumentException("Unknown ViewModel: ${modelClass.name}")
         }
+    }
+
+    companion object {
+        private const val SYSTEM_PROMPT =
+            "You are Pocket Technician, a friendly tech-support assistant running on the " +
+                "user's phone. Help diagnose and fix computer problems step by step. " +
+                "Keep replies short and practical, and ask for a photo of the screen " +
+                "when you need to see the computer's state."
     }
 }

@@ -4,6 +4,8 @@ import android.app.Application
 import com.pockettechnician.app.data.ai.AiPreferencesStore
 import com.pockettechnician.app.data.ai.ApiKeyStore
 import com.pockettechnician.app.data.ai.ModelRepository
+import com.pockettechnician.app.data.chat.ChatClient
+import com.pockettechnician.app.data.chat.ConversationRepository
 import com.pockettechnician.app.hid.HidManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +21,9 @@ class PocketTechnicianApplication : Application() {
         private set
     lateinit var hidManager: HidManager
         private set
+    lateinit var conversationRepository: ConversationRepository
+        private set
+    val chatClient = ChatClient()
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -28,10 +33,14 @@ class PocketTechnicianApplication : Application() {
         aiPreferencesStore = AiPreferencesStore(this)
         modelRepository = ModelRepository(apiKeyStore, aiPreferencesStore)
         hidManager = HidManager(this)
+        conversationRepository = ConversationRepository(this)
 
         applicationScope.launch {
             modelRepository.loadCachedModels()
             modelRepository.refreshAllConfigured()
+        }
+        applicationScope.launch {
+            conversationRepository.load()
         }
     }
 }

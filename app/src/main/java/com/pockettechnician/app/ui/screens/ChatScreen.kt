@@ -8,37 +8,54 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pockettechnician.app.PocketTechnicianApplication
-import com.pockettechnician.app.ui.chat.ChatItem
+import com.pockettechnician.app.data.chat.ChatMessage
+import com.pockettechnician.app.data.chat.ChatRole
+import com.pockettechnician.app.ui.chat.ChatUiState
 import com.pockettechnician.app.ui.chat.ChatViewModel
-import com.pockettechnician.app.ui.chat.ProposalStatus
 
 @Composable
 fun ChatScreen() {
     val application = LocalContext.current.applicationContext as PocketTechnicianApplication
     val viewModel: ChatViewModel = viewModel(factory = ChatViewModel.Factory(application))
-    val items by viewModel.items.collectAsState()
-    val hid by application.hidManager.state.collectAsState()
+    val uiState by viewModel.uiState.collectAsState()
+    var draft by rememberSaveable { mutableStateOf("") }
+
+    val listState = rememberLazyListState()
+    LaunchedEffect(uiState.messages.size, uiState.isSending) {
+        if (uiState.messages.isNotEmpty()) {
+            listState.animateScrollToItem(uiState.messages.lastIndex)
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -52,39 +69,55 @@ fun ChatScreen() {
                 .fillMaxSize()
                 .padding(horizontal = 16.dp),
         ) {
-            Text(
-                "Chat — HID demo",
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.padding(vertical = 16.dp),
-            )
+            ChatHeader(uiState, onNewConversation = viewModel::startNewConversation)
 
             LazyColumn(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(top = 12.dp),
+                state = listState,
+                modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(items, key = { it.key }) { item ->
-                    when (item) {
-                        is ChatItem.Said -> MessageBubble(item)
-                        is ChatItem.Proposal -> ActionProposalCard(
-                            proposal = item,
-                            hidConnected = hid.connected,
-                            onApprove = { viewModel.approve(item.key) },
-                            onDeny = { viewModel.deny(item.key) },
-                        )
-                    }
+                if (uiState.messages.isEmpty()) {
+                    item { EmptyChatHint(uiState.modelConfigured) }
                 }
+                items(uiState.messages) { message ->
+                    MessageBubble(message)
+                }
+                if (uiState.isSending) {
+                    item { ThinkingIndicator() }
+                }
+            }
+
+            uiState.errorMessage?.let { error ->
+                Text(
+                    text = error,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(vertical = 4.dp),
+                )
             }
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 12.dp),
-                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                TextButton(onClick = viewModel::reset) {
-                    Text("Restart demo")
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = { draft = it },
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Describe the problem…") },
+                    maxLines = 4,
+                )
+                FilledIconButton(
+                    onClick = {
+                        viewModel.send(draft)
+                        draft = ""
+                    },
+                    enabled = draft.isNotBlank() && !uiState.isSending,
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
                 }
             }
         }
@@ -92,11 +125,54 @@ fun ChatScreen() {
 }
 
 @Composable
-private fun MessageBubble(message: ChatItem.Said) {
+private fun ChatHeader(uiState: ChatUiState, onNewConversation: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = uiState.conversationTitle ?: "Chat",
+                style = MaterialTheme.typography.headlineSmall,
+                maxLines = 1,
+            )
+            uiState.modelLabel?.let { model ->
+                Text(
+                    text = model,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        IconButton(onClick = onNewConversation) {
+            Icon(Icons.Filled.Add, contentDescription = "New conversation")
+        }
+    }
+}
+
+@Composable
+private fun EmptyChatHint(modelConfigured: Boolean) {
+    Text(
+        text = if (modelConfigured) {
+            "Describe the computer problem to get started."
+        } else {
+            "Add an API key and select a model on the Dashboard tab, then describe the problem here."
+        },
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(vertical = 24.dp),
+    )
+}
+
+@Composable
+private fun MessageBubble(message: ChatMessage) {
+    val fromUser = message.role == ChatRole.USER
     Box(modifier = Modifier.fillMaxWidth()) {
         Card(
             colors = CardDefaults.cardColors(
-                containerColor = if (message.fromUser) {
+                containerColor = if (fromUser) {
                     MaterialTheme.colorScheme.primaryContainer
                 } else {
                     MaterialTheme.colorScheme.surfaceVariant
@@ -104,7 +180,7 @@ private fun MessageBubble(message: ChatItem.Said) {
             ),
             modifier = Modifier
                 .widthIn(max = 420.dp)
-                .align(if (message.fromUser) Alignment.CenterEnd else Alignment.CenterStart),
+                .align(if (fromUser) Alignment.CenterEnd else Alignment.CenterStart),
         ) {
             Text(message.text, modifier = Modifier.padding(12.dp))
         }
@@ -112,68 +188,16 @@ private fun MessageBubble(message: ChatItem.Said) {
 }
 
 @Composable
-private fun ActionProposalCard(
-    proposal: ChatItem.Proposal,
-    hidConnected: Boolean,
-    onApprove: () -> Unit,
-    onDeny: () -> Unit,
-) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-        ),
-        modifier = Modifier.fillMaxWidth(),
+private fun ThinkingIndicator() {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("Proposed action", style = MaterialTheme.typography.labelLarge)
-                StatusLabel(proposal.status)
-            }
-            Text(
-                text = "${proposal.label}: ${proposal.detail}",
-                fontFamily = FontFamily.Monospace,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-
-            when (proposal.status) {
-                ProposalStatus.Pending -> {
-                    if (!hidConnected) {
-                        Text(
-                            "Connect a host on the Dashboard tab to enable this action.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = onApprove, enabled = hidConnected) { Text("Approve") }
-                        OutlinedButton(onClick = onDeny) { Text("Deny") }
-                    }
-                }
-                ProposalStatus.Running -> Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp))
-                    Text("Sending over HID…")
-                }
-                else -> Unit
-            }
-        }
+        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+        Text(
+            "Thinking…",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
-}
-
-@Composable
-private fun StatusLabel(status: ProposalStatus) {
-    val (text, color) = when (status) {
-        ProposalStatus.Pending -> "Awaiting approval" to MaterialTheme.colorScheme.onSurfaceVariant
-        ProposalStatus.Running -> "Running" to MaterialTheme.colorScheme.primary
-        ProposalStatus.Done -> "Done ✓" to MaterialTheme.colorScheme.primary
-        ProposalStatus.Failed -> "Failed" to MaterialTheme.colorScheme.error
-        ProposalStatus.Denied -> "Denied" to MaterialTheme.colorScheme.error
-    }
-    Text(text, style = MaterialTheme.typography.labelMedium, color = color)
 }

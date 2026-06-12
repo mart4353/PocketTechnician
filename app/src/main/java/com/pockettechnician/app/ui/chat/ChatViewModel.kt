@@ -28,6 +28,7 @@ data class ChatUiState(
     val errorMessage: String? = null,
     val modelLabel: String? = null,
     val modelConfigured: Boolean = false,
+    val pendingImageBase64: String? = null,
 )
 
 /**
@@ -44,6 +45,7 @@ class ChatViewModel(
 
     private val isSending = MutableStateFlow(false)
     private val errorMessage = MutableStateFlow<String?>(null)
+    private val _pendingImageBase64 = MutableStateFlow<String?>(null)
 
     private val modelState = combine(
         aiPreferencesStore.selectedModel,
@@ -52,7 +54,7 @@ class ChatViewModel(
         ModelState(selection, selection != null && selection.provider in configured)
     }
 
-    val uiState: StateFlow<ChatUiState> = combine(
+    private val coreUiState = combine(
         repository.conversations,
         repository.activeConversationId,
         modelState,
@@ -68,15 +70,29 @@ class ChatViewModel(
             modelLabel = model.selection?.modelId,
             modelConfigured = model.configured,
         )
+    }
+
+    val uiState: StateFlow<ChatUiState> = combine(coreUiState, _pendingImageBase64) { state, pending ->
+        state.copy(pendingImageBase64 = pending)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = ChatUiState(),
     )
 
+    fun attachImage(base64: String) {
+        _pendingImageBase64.value = base64
+    }
+
+    fun clearPendingImage() {
+        _pendingImageBase64.value = null
+    }
+
     fun send(text: String) {
         val trimmed = text.trim()
-        if (trimmed.isEmpty() || isSending.value) return
+        val imageBase64 = _pendingImageBase64.value
+        if (trimmed.isEmpty() && imageBase64 == null) return
+        if (isSending.value) return
         viewModelScope.launch {
             val selection = aiPreferencesStore.selectedModel.first()
             val apiKey = selection?.let { apiKeyStore.get(it.provider) }
@@ -86,9 +102,10 @@ class ChatViewModel(
             }
             isSending.value = true
             errorMessage.value = null
+            _pendingImageBase64.value = null
             val conversationId = repository.activeConversationId.value
                 ?: repository.create().id
-            repository.appendMessage(conversationId, ChatMessage(ChatRole.USER, trimmed))
+            repository.appendMessage(conversationId, ChatMessage(ChatRole.USER, trimmed, imageBase64))
             val history = repository.get(conversationId)?.messages.orEmpty()
             runCatching {
                 withContext(Dispatchers.IO) {
@@ -137,7 +154,8 @@ class ChatViewModel(
                             "conversation below. Reply with the title only, no quotes.",
                     )
                     conversation.messages.take(4).forEach { message ->
-                        appendLine("${message.role.name.lowercase()}: ${message.text.take(500)}")
+                        val imageSuffix = if (message.imageBase64 != null) " [image]" else ""
+                        appendLine("${message.role.name.lowercase()}: ${message.text.take(500)}$imageSuffix")
                     }
                 }
                 chatClient.complete(

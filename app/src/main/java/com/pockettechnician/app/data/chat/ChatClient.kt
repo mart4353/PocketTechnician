@@ -83,7 +83,7 @@ class ChatClient {
         put("model", modelId)
         put("max_tokens", maxTokens)
         if (!systemPrompt.isNullOrBlank()) put("system", systemPrompt)
-        put("messages", messagesJson(messages))
+        put("messages", messagesJson(messages, AiProvider.ANTHROPIC))
     }
 
     // No token cap: OpenAI and Grok disagree on max_tokens vs
@@ -98,21 +98,57 @@ class ChatClient {
         if (!systemPrompt.isNullOrBlank()) {
             all.put(JSONObject().put("role", "system").put("content", systemPrompt))
         }
-        val history = messagesJson(messages)
+        val history = messagesJson(messages, AiProvider.OPENAI)
         for (index in 0 until history.length()) all.put(history.get(index))
         put("messages", all)
     }
 
-    private fun messagesJson(messages: List<ChatMessage>): JSONArray {
+    private fun messagesJson(messages: List<ChatMessage>, provider: AiProvider): JSONArray {
         val array = JSONArray()
         for (message in messages) {
-            array.put(
-                JSONObject()
-                    .put("role", if (message.role == ChatRole.USER) "user" else "assistant")
-                    .put("content", message.text),
-            )
+            val role = if (message.role == ChatRole.USER) "user" else "assistant"
+            val content: Any = if (message.imageBase64 != null && message.role == ChatRole.USER) {
+                buildImageContentArray(message.imageBase64, message.text, provider)
+            } else {
+                message.text
+            }
+            array.put(JSONObject().put("role", role).put("content", content))
         }
         return array
+    }
+
+    private fun buildImageContentArray(
+        imageBase64: String,
+        text: String,
+        provider: AiProvider,
+    ): JSONArray = JSONArray().apply {
+        when (provider) {
+            AiProvider.ANTHROPIC -> {
+                put(
+                    JSONObject()
+                        .put("type", "image")
+                        .put(
+                            "source",
+                            JSONObject()
+                                .put("type", "base64")
+                                .put("media_type", "image/jpeg")
+                                .put("data", imageBase64),
+                        ),
+                )
+                put(JSONObject().put("type", "text").put("text", text))
+            }
+            AiProvider.OPENAI, AiProvider.GROK -> {
+                put(
+                    JSONObject()
+                        .put("type", "image_url")
+                        .put(
+                            "image_url",
+                            JSONObject().put("url", "data:image/jpeg;base64,$imageBase64"),
+                        ),
+                )
+                put(JSONObject().put("type", "text").put("text", text))
+            }
+        }
     }
 
     private fun parseAnthropicReply(body: String): String {

@@ -97,9 +97,14 @@ class ModelRepository(
         current: AiModelSelection?,
         available: List<RemoteModel>,
     ): AiModelSelection? {
+        // Don't touch the persisted selection while the model list hasn't loaded yet —
+        // an empty list is the startup state, not evidence that models are unavailable.
+        if (available.isEmpty()) return current
         val resolved = when {
             current != null && available.any { it.provider == current.provider && it.id == current.modelId } -> current
-            else -> available.firstOrNull()?.let { AiModelSelection(it.provider, it.id) }
+            else -> (available.firstOrNull { "opus" in it.id.lowercase() }
+                ?: available.firstOrNull())
+                ?.let { AiModelSelection(it.provider, it.id) }
         }
         if (resolved != current) {
             preferencesStore.setSelectedModel(resolved)

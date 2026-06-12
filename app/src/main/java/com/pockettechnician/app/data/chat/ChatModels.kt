@@ -7,6 +7,7 @@ enum class ChatRole { USER, ASSISTANT }
 data class ChatMessage(
     val role: ChatRole,
     val text: String,
+    val imageBase64: String? = null,
     val timestampEpochMillis: Long = System.currentTimeMillis(),
 )
 

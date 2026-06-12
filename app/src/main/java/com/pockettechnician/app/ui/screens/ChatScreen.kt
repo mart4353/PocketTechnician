@@ -1,5 +1,10 @@
 package com.pockettechnician.app.ui.screens
 
+import android.graphics.BitmapFactory
+import android.util.Base64
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,9 +18,12 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -24,24 +32,38 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pockettechnician.app.PocketTechnicianApplication
 import com.pockettechnician.app.data.chat.ChatMessage
 import com.pockettechnician.app.data.chat.ChatRole
+import com.pockettechnician.app.ui.compressAndResizeJpeg
 import com.pockettechnician.app.ui.chat.ChatUiState
 import com.pockettechnician.app.ui.chat.ChatViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 @Composable
 fun ChatScreen() {
@@ -49,6 +71,26 @@ fun ChatScreen() {
     val viewModel: ChatViewModel = viewModel(factory = ChatViewModel.Factory(application))
     val uiState by viewModel.uiState.collectAsState()
     var draft by rememberSaveable { mutableStateOf("") }
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    // Temp file for system camera output
+    var cameraFile by remember { mutableStateOf<File?>(null) }
+    val takePictureLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicture(),
+    ) { success ->
+        if (success) {
+            cameraFile?.let { file ->
+                coroutineScope.launch {
+                    val compressed = withContext(Dispatchers.IO) {
+                        compressAndResizeJpeg(file.readBytes())
+                    }
+                    val base64 = Base64.encodeToString(compressed, Base64.NO_WRAP)
+                    viewModel.attachImage(base64)
+                }
+            }
+        }
+    }
 
     val listState = rememberLazyListState()
     LaunchedEffect(uiState.messages.size, uiState.isSending) {
@@ -96,6 +138,15 @@ fun ChatScreen() {
                 )
             }
 
+            // Pending image preview
+            uiState.pendingImageBase64?.let { b64 ->
+                PendingImagePreview(
+                    base64 = b64,
+                    onClear = viewModel::clearPendingImage,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+            }
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -103,6 +154,25 @@ fun ChatScreen() {
                 verticalAlignment = Alignment.Bottom,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                IconButton(
+                    onClick = {
+                        val file = File(
+                            context.cacheDir,
+                            "camera/photo_${System.currentTimeMillis()}.jpg",
+                        ).also {
+                            it.parentFile?.mkdirs()
+                            cameraFile = it
+                        }
+                        val uri = FileProvider.getUriForFile(
+                            context,
+                            "${context.packageName}.fileprovider",
+                            file,
+                        )
+                        takePictureLauncher.launch(uri)
+                    },
+                ) {
+                    Icon(Icons.Filled.PhotoCamera, contentDescription = "Attach photo")
+                }
                 OutlinedTextField(
                     value = draft,
                     onValueChange = { draft = it },
@@ -115,10 +185,49 @@ fun ChatScreen() {
                         viewModel.send(draft)
                         draft = ""
                     },
-                    enabled = draft.isNotBlank() && !uiState.isSending,
+                    enabled = (draft.isNotBlank() || uiState.pendingImageBase64 != null) && !uiState.isSending,
                 ) {
                     Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PendingImagePreview(
+    base64: String,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val bitmap by produceState<ImageBitmap?>(null, base64) {
+        value = withContext(Dispatchers.Default) {
+            val bytes = Base64.decode(base64, Base64.NO_WRAP)
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+        }
+    }
+    bitmap?.let { bmp ->
+        Box(modifier = modifier) {
+            Image(
+                bitmap = bmp,
+                contentDescription = "Attached photo",
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(RoundedCornerShape(8.dp)),
+                contentScale = ContentScale.Crop,
+            )
+            SmallFloatingActionButton(
+                onClick = onClear,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(20.dp),
+                containerColor = MaterialTheme.colorScheme.errorContainer,
+            ) {
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = "Remove photo",
+                    modifier = Modifier.size(12.dp),
+                )
             }
         }
     }
@@ -169,6 +278,14 @@ private fun EmptyChatHint(modelConfigured: Boolean) {
 @Composable
 private fun MessageBubble(message: ChatMessage) {
     val fromUser = message.role == ChatRole.USER
+    val bitmap by produceState<ImageBitmap?>(null, message.imageBase64) {
+        value = message.imageBase64?.let { b64 ->
+            withContext(Dispatchers.Default) {
+                val bytes = Base64.decode(b64, Base64.NO_WRAP)
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+            }
+        }
+    }
     Box(modifier = Modifier.fillMaxWidth()) {
         Card(
             colors = CardDefaults.cardColors(
@@ -182,7 +299,21 @@ private fun MessageBubble(message: ChatMessage) {
                 .widthIn(max = 420.dp)
                 .align(if (fromUser) Alignment.CenterEnd else Alignment.CenterStart),
         ) {
-            Text(message.text, modifier = Modifier.padding(12.dp))
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                bitmap?.let { bmp ->
+                    Image(
+                        bitmap = bmp,
+                        contentDescription = "Attached photo",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.FillWidth,
+                    )
+                }
+                if (message.text.isNotBlank()) {
+                    Text(message.text)
+                }
+            }
         }
     }
 }

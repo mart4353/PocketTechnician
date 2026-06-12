@@ -104,12 +104,12 @@ class ConversationRepository(context: Context) {
         put("updatedAt", updatedAtEpochMillis)
         val messageArray = JSONArray()
         for (message in messages) {
-            messageArray.put(
-                JSONObject()
-                    .put("role", message.role.name)
-                    .put("text", message.text)
-                    .put("timestamp", message.timestampEpochMillis),
-            )
+            val msgObj = JSONObject()
+                .put("role", message.role.name)
+                .put("text", message.text)
+                .put("timestamp", message.timestampEpochMillis)
+            if (message.imageBase64 != null) msgObj.put("imageBase64", message.imageBase64)
+            messageArray.put(msgObj)
         }
         put("messages", messageArray)
     }
@@ -123,6 +123,7 @@ class ConversationRepository(context: Context) {
                     ChatMessage(
                         role = ChatRole.valueOf(item.getString("role")),
                         text = item.getString("text"),
+                        imageBase64 = if (item.isNull("imageBase64")) null else item.optString("imageBase64"),
                         timestampEpochMillis = item.optLong("timestamp"),
                     ),
                 )

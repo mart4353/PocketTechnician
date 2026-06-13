@@ -53,6 +53,8 @@ The user must remain in control at all times:
 
 See [docs/SAFETY.md](docs/SAFETY.md) for the full safety model.
 
+> ⚠️ **Experimental software.** Pocket Technician can physically control another computer and sends screen images to a third-party AI provider. Read the [DISCLAIMER](DISCLAIMER.md) before use — there is no warranty, and you are responsible for supervision, authorization, and any sensitive data on screen.
+
 ## Building
 
 Requirements: JDK 17 and the Android SDK (platform 35, build-tools 35.0.0). Point `local.properties` (or `ANDROID_HOME`) at your SDK, then:
@@ -82,3 +84,8 @@ Quick dev install on a USB-connected device:
 **UI mockup stage.** The app compiles and shows all six tabs (Dashboard, Conversations, Chat, Take Photo, Gallery, Voice) with responsive mock screens — no camera, Bluetooth HID, or AI wiring yet. The MVP goal is to prove one complete support loop:
 
 > **See the problem → understand it → act on the computer → verify the result.**
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE). Provided "AS IS" without
+warranty of any kind — see the [DISCLAIMER](DISCLAIMER.md).

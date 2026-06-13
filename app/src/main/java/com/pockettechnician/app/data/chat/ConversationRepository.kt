@@ -89,15 +89,27 @@ class ConversationRepository(context: Context) {
     }
 
     /**
-     * Seed the four HID tool-call test conversations if they aren't present yet.
-     * Fixed ids keep this idempotent across launches; once a test conversation
-     * exists (even after its call is run) it is left untouched.
+     * Reset the four HID tool-call test conversations to their canonical
+     * definitions ([testConversations]) on every launch. Matched by fixed id: a
+     * missing seed is added, and an existing one is overwritten unconditionally
+     * — including resetting a call that was already run back to PENDING — so the
+     * test fixtures are identical on every device after each deploy. Non-seed
+     * conversations are left untouched, and original timestamps are preserved so
+     * the list order stays stable across launches.
      */
     suspend fun ensureTestConversations() {
-        val existing = _conversations.value.map { it.id }.toSet()
-        val missing = testConversations().filterNot { it.id in existing }
-        if (missing.isEmpty()) return
-        update { it + missing }
+        val seeds = testConversations().associateBy { it.id }
+        update { current ->
+            val reset = current.map { existing ->
+                val seed = seeds[existing.id] ?: return@map existing
+                seed.copy(
+                    createdAtEpochMillis = existing.createdAtEpochMillis,
+                    updatedAtEpochMillis = existing.updatedAtEpochMillis,
+                )
+            }
+            val presentIds = current.mapTo(mutableSetOf()) { it.id }
+            reset + seeds.values.filter { it.id !in presentIds }
+        }
     }
 
     private fun testConversations(): List<Conversation> {

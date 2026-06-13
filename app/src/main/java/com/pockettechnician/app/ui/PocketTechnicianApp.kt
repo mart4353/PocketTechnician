@@ -60,7 +60,7 @@ fun PocketTechnicianApp() {
             )
             TechnicianTab.Chat -> ChatScreen()
             TechnicianTab.TakePhoto -> TakePhotoScreen(onPhotoAttached = { currentTab = TechnicianTab.Chat })
-            TechnicianTab.Gallery -> GalleryScreen()
+            TechnicianTab.Gallery -> GalleryScreen(onPhotoAttached = { currentTab = TechnicianTab.Chat })
             TechnicianTab.Voice -> VoiceScreen(onSubmitted = { currentTab = TechnicianTab.Chat })
         }
     }

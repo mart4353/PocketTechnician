@@ -6,13 +6,19 @@ Pocket Technician turns an Android phone into an AI-powered computer support tec
 
 > AI support that can see the problem, operate the computer, and verify that the issue has been resolved.
 
+> 🔒 **Intended use:** only on computers you own or are explicitly authorized to operate, under your supervision. Because the app sends real keyboard and mouse input to another machine, using it without consent may be illegal. Please read the [DISCLAIMER](DISCLAIMER.md) before use.
+
 ## How it works
 
 1. Open the Pocket Technician app on an Android phone.
 2. Place the phone in a stand facing the computer screen.
-3. Pair the phone with the computer as a Bluetooth keyboard and mouse (HID — Human Interface Device).
+3. **Start the HID server in the app *before* connecting over Bluetooth.** The phone must be advertising as an HID device first; only then pair it with the computer as a Bluetooth keyboard and mouse (HID — Human Interface Device).
 4. Describe the problem through chat or voice.
 5. Let the AI technician observe and control the computer under your supervision.
+
+> ⚙️ **Pairing order matters.** Always **start the HID server first, then make the Bluetooth connection.** If the computer connects before the phone is advertising as an HID device, it will pair as a plain phone and keyboard/mouse control will not work.
+>
+> 🛠️ **If the HID connection can't be established:** remove the pairing from Bluetooth memory on **both** the phone **and** the computer (delete/forget the device on each side), then start over — start the HID server in the app first, and only then pair again. This clears stale Bluetooth/SDP records that block the HID profile from being offered.
 
 The phone acts as the technician's:
 
@@ -55,6 +61,12 @@ See [docs/SAFETY.md](docs/SAFETY.md) for the full safety model.
 
 > ⚠️ **Experimental software.** Pocket Technician can physically control another computer and sends screen images to a third-party AI provider. Read the [DISCLAIMER](DISCLAIMER.md) before use — there is no warranty, and you are responsible for supervision, authorization, and any sensitive data on screen.
 
+## Security & privacy
+
+- **API keys never leave your device, except to the provider you choose.** You supply your own AI provider keys (e.g. Anthropic Claude, xAI Grok). They are stored **encrypted at rest on the phone** using Android's `EncryptedSharedPreferences` (AES-256), backed by a master key held in the hardware-backed Android Keystore. The app sends each key only as the authorization header to that provider's own API — there is no Pocket Technician backend, account, or telemetry.
+- **No keys in this repository.** Nothing in the source or git history contains real credentials; `keystore.properties`, `local.properties`, and `*.env`/`*.jks` files are git-ignored.
+- **Screen images go to your configured AI provider.** Anything the camera captures is sent to that third party for interpretation. Review their privacy and data-retention terms, and avoid pointing the camera at credentials or confidential material you do not want sent off-device.
+
 ## Building
 
 Requirements: JDK 17 and the Android SDK (platform 35, build-tools 35.0.0). Point `local.properties` (or `ANDROID_HOME`) at your SDK, then:
@@ -81,7 +93,9 @@ Quick dev install on a USB-connected device:
 
 ## Status
 
-**UI mockup stage.** The app compiles and shows all six tabs (Dashboard, Conversations, Chat, Take Photo, Gallery, Voice) with responsive mock screens — no camera, Bluetooth HID, or AI wiring yet. The MVP goal is to prove one complete support loop:
+**Working prototype.** All six tabs (Dashboard, Conversations, Chat, Take Photo, Gallery, Voice) are functional, and the core support loop runs end-to-end: the phone registers as a Bluetooth HID keyboard and mouse, captures the screen with the camera, sends it to a multimodal AI (Claude or Grok) that plans and issues input actions via tool calls, with voice input and output supported. Verified live driving a Linux PC.
+
+Rough edges remain — Bluetooth pairing has quirks, and login/recovery and BIOS/UEFI control are experimental — but the central claim is implemented, not mocked:
 
 > **See the problem → understand it → act on the computer → verify the result.**
 

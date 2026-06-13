@@ -31,4 +31,7 @@ keystore.properties
 # OS
 .DS_Store
 Thumbs.db
+
+# Local Claude Code config (personal auto-approve allowlists)
+.claude/settings.json
 .claude/settings.local.json

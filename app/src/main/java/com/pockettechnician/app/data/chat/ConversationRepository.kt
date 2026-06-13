@@ -64,6 +64,100 @@ class ConversationRepository(context: Context) {
         }
     }
 
+    /** Apply [transform] to one tool call inside one message, persisting the result. */
+    suspend fun updateToolCall(
+        conversationId: String,
+        messageId: String,
+        toolCallId: String,
+        transform: (ToolCall) -> ToolCall,
+    ) {
+        update { list ->
+            list.map { conversation ->
+                if (conversation.id != conversationId) return@map conversation
+                conversation.copy(
+                    messages = conversation.messages.map { message ->
+                        if (message.id != messageId) message
+                        else message.copy(
+                            toolCalls = message.toolCalls.map { call ->
+                                if (call.id == toolCallId) transform(call) else call
+                            },
+                        )
+                    },
+                )
+            }
+        }
+    }
+
+    /**
+     * Seed the four HID tool-call test conversations if they aren't present yet.
+     * Fixed ids keep this idempotent across launches; once a test conversation
+     * exists (even after its call is run) it is left untouched.
+     */
+    suspend fun ensureTestConversations() {
+        val existing = _conversations.value.map { it.id }.toSet()
+        val missing = testConversations().filterNot { it.id in existing }
+        if (missing.isEmpty()) return
+        update { it + missing }
+    }
+
+    private fun testConversations(): List<Conversation> {
+        fun convo(id: String, title: String, ask: String, reply: String, call: ToolCall) =
+            Conversation(
+                id = id,
+                title = title,
+                messages = listOf(
+                    ChatMessage(ChatRole.USER, ask),
+                    ChatMessage(ChatRole.ASSISTANT, reply, toolCalls = listOf(call)),
+                ),
+            )
+        return listOf(
+            convo(
+                id = "test-type-text",
+                title = "Test: type text",
+                ask = "Type \"Hello world!\" on my computer.",
+                reply = "Sure — I'll type that for you. Approve the action below.",
+                call = ToolCall(
+                    id = "seed-type-text",
+                    name = "type_text",
+                    arguments = JSONObject().put("text", "Hello world!").toString(),
+                ),
+            ),
+            convo(
+                id = "test-move-pointer",
+                title = "Test: move pointer",
+                ask = "Move the mouse 50 right and 200 down.",
+                reply = "Will do — moving the pointer by (50, 200). Approve below.",
+                call = ToolCall(
+                    id = "seed-move-pointer",
+                    name = "move_pointer",
+                    arguments = JSONObject().put("dx", 50).put("dy", 200).toString(),
+                ),
+            ),
+            convo(
+                id = "test-right-click",
+                title = "Test: right click",
+                ask = "Right-click where the pointer is.",
+                reply = "Okay — I'll right-click. Approve below.",
+                call = ToolCall(
+                    id = "seed-right-click",
+                    name = "mouse_press",
+                    arguments = JSONObject().put("button", "right").toString(),
+                ),
+            ),
+            convo(
+                id = "test-left-click",
+                title = "Test: left click",
+                ask = "Left-click where the pointer is.",
+                reply = "Okay — I'll left-click. Approve below.",
+                call = ToolCall(
+                    id = "seed-left-click",
+                    name = "mouse_press",
+                    arguments = JSONObject().put("button", "left").toString(),
+                ),
+            ),
+        )
+    }
+
     suspend fun delete(id: String) {
         update { list -> list.filterNot { it.id == id } }
         if (_activeConversationId.value == id) _activeConversationId.value = null
@@ -105,13 +199,47 @@ class ConversationRepository(context: Context) {
         val messageArray = JSONArray()
         for (message in messages) {
             val msgObj = JSONObject()
+                .put("id", message.id)
                 .put("role", message.role.name)
                 .put("text", message.text)
                 .put("timestamp", message.timestampEpochMillis)
             if (message.imageBase64 != null) msgObj.put("imageBase64", message.imageBase64)
+            if (message.toolCalls.isNotEmpty()) {
+                val toolArray = JSONArray()
+                for (call in message.toolCalls) {
+                    toolArray.put(
+                        JSONObject()
+                            .put("id", call.id)
+                            .put("name", call.name)
+                            .put("arguments", call.arguments)
+                            .put("status", call.status.name)
+                            .put("resultText", call.resultText ?: JSONObject.NULL),
+                    )
+                }
+                msgObj.put("toolCalls", toolArray)
+            }
             messageArray.put(msgObj)
         }
         put("messages", messageArray)
+    }
+
+    private fun JSONArray?.toToolCalls(): List<ToolCall> {
+        if (this == null) return emptyList()
+        return buildList {
+            for (index in 0 until length()) {
+                val item = getJSONObject(index)
+                add(
+                    ToolCall(
+                        id = item.getString("id"),
+                        name = item.getString("name"),
+                        arguments = item.getString("arguments"),
+                        status = runCatching { ToolCallStatus.valueOf(item.getString("status")) }
+                            .getOrDefault(ToolCallStatus.PENDING),
+                        resultText = if (item.isNull("resultText")) null else item.optString("resultText"),
+                    ),
+                )
+            }
+        }
     }
 
     private fun JSONObject.toConversation(): Conversation {
@@ -125,6 +253,8 @@ class ConversationRepository(context: Context) {
                         text = item.getString("text"),
                         imageBase64 = if (item.isNull("imageBase64")) null else item.optString("imageBase64"),
                         timestampEpochMillis = item.optLong("timestamp"),
+                        id = if (item.has("id")) item.getString("id") else java.util.UUID.randomUUID().toString(),
+                        toolCalls = item.optJSONArray("toolCalls").toToolCalls(),
                     ),
                 )
             }

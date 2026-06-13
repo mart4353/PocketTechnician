@@ -234,6 +234,21 @@ class HidManager(private val context: Context) {
         true
     }
 
+    /**
+     * Press and release a mouse button (left/right/middle bitmask from
+     * [HidDescriptors]). Sends a button-down report, holds briefly, then
+     * releases. Suspends until done.
+     */
+    suspend fun click(buttons: Int): Boolean = withContext(Dispatchers.Default) {
+        val device = hidDevice ?: return@withContext false
+        val host = connectedDevice ?: return@withContext false
+        if (!hasConnectPermission()) return@withContext false
+        sendMouse(device, host, HidDescriptors.mouseButtonReport(buttons))
+        delay(CLICK_HOLD_MS)
+        sendMouse(device, host, HidDescriptors.mouseButtonReport(0))
+        true
+    }
+
     @SuppressLint("MissingPermission")
     private fun sendKeyboard(device: BluetoothHidDevice, host: BluetoothDevice, report: ByteArray) {
         device.sendReport(host, HidDescriptors.REPORT_ID_KEYBOARD, report)
@@ -268,5 +283,6 @@ class HidManager(private val context: Context) {
         private const val TAG = "HidManager"
         private const val KEY_DELAY_MS = 12L
         private const val MOUSE_DELAY_MS = 8L
+        private const val CLICK_HOLD_MS = 40L
     }
 }

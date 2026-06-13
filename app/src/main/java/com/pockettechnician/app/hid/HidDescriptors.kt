@@ -22,6 +22,11 @@ object HidDescriptors {
     /** Each relative mouse report carries a delta clamped to this range. */
     const val MOUSE_DELTA_LIMIT = 127
 
+    /** Mouse button bitmask values (report byte 0). */
+    const val MOUSE_BUTTON_LEFT = 0x01
+    const val MOUSE_BUTTON_RIGHT = 0x02
+    const val MOUSE_BUTTON_MIDDLE = 0x04
+
     val REPORT_MAP: ByteArray = byteArrayOf(
         // ----- Keyboard (Report ID 1) -----
         0x05.b, 0x01.b,             // Usage Page (Generic Desktop)
@@ -89,6 +94,10 @@ object HidDescriptors {
     /** Build a 3-byte relative mouse report (no buttons pressed). */
     fun mouseReport(dx: Int, dy: Int): ByteArray =
         byteArrayOf(0, dx.toByte(), dy.toByte())
+
+    /** Build a 3-byte mouse report with the given button bitmask held and no motion. */
+    fun mouseButtonReport(buttons: Int): ByteArray =
+        byteArrayOf(buttons.toByte(), 0, 0)
 
     /**
      * Map an ASCII character to (modifier, USB HID usage code), or null if the

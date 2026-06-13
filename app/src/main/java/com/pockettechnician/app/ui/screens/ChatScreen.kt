@@ -22,8 +22,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -31,6 +33,7 @@ import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
@@ -51,18 +54,23 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pockettechnician.app.PocketTechnicianApplication
 import com.pockettechnician.app.data.chat.ChatMessage
 import com.pockettechnician.app.data.chat.ChatRole
+import com.pockettechnician.app.data.chat.HidTools
+import com.pockettechnician.app.data.chat.ToolCall
+import com.pockettechnician.app.data.chat.ToolCallStatus
 import com.pockettechnician.app.ui.compressAndResizeJpeg
 import com.pockettechnician.app.ui.chat.ChatUiState
 import com.pockettechnician.app.ui.chat.ChatViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.io.File
 
 @Composable
@@ -122,7 +130,13 @@ fun ChatScreen() {
                     item { EmptyChatHint(uiState.modelConfigured) }
                 }
                 items(uiState.messages) { message ->
-                    MessageBubble(message)
+                    MessageBubble(
+                        message = message,
+                        hidConnected = uiState.hidConnected,
+                        onResolveToolCall = { toolCallId, accepted ->
+                            viewModel.resolveToolCall(message.id, toolCallId, accepted)
+                        },
+                    )
                 }
                 if (uiState.isSending) {
                     item { ThinkingIndicator() }
@@ -276,7 +290,11 @@ private fun EmptyChatHint(modelConfigured: Boolean) {
 }
 
 @Composable
-private fun MessageBubble(message: ChatMessage) {
+private fun MessageBubble(
+    message: ChatMessage,
+    hidConnected: Boolean,
+    onResolveToolCall: (toolCallId: String, accepted: Boolean) -> Unit,
+) {
     val fromUser = message.role == ChatRole.USER
     val bitmap by produceState<ImageBitmap?>(null, message.imageBase64) {
         value = message.imageBase64?.let { b64 ->
@@ -286,35 +304,158 @@ private fun MessageBubble(message: ChatMessage) {
             }
         }
     }
-    Box(modifier = Modifier.fillMaxWidth()) {
-        Card(
-            colors = CardDefaults.cardColors(
-                containerColor = if (fromUser) {
-                    MaterialTheme.colorScheme.primaryContainer
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant
-                },
-            ),
-            modifier = Modifier
-                .widthIn(max = 420.dp)
-                .align(if (fromUser) Alignment.CenterEnd else Alignment.CenterStart),
-        ) {
-            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                bitmap?.let { bmp ->
-                    Image(
-                        bitmap = bmp,
-                        contentDescription = "Attached photo",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp)),
-                        contentScale = ContentScale.FillWidth,
-                    )
-                }
-                if (message.text.isNotBlank()) {
-                    Text(message.text)
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        if (message.text.isNotBlank() || bitmap != null) {
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (fromUser) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        },
+                    ),
+                    modifier = Modifier
+                        .widthIn(max = 420.dp)
+                        .align(if (fromUser) Alignment.CenterEnd else Alignment.CenterStart),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        bitmap?.let { bmp ->
+                            Image(
+                                bitmap = bmp,
+                                contentDescription = "Attached photo",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp)),
+                                contentScale = ContentScale.FillWidth,
+                            )
+                        }
+                        if (message.text.isNotBlank()) {
+                            Text(message.text)
+                        }
+                    }
                 }
             }
         }
+        message.toolCalls.forEach { call ->
+            ToolCallCard(
+                call = call,
+                hidConnected = hidConnected,
+                onAccept = { onResolveToolCall(call.id, true) },
+                onReject = { onResolveToolCall(call.id, false) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ToolCallCard(
+    call: ToolCall,
+    hidConnected: Boolean,
+    onAccept: () -> Unit,
+    onReject: () -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .widthIn(max = 460.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    Icons.Filled.Bolt,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = toolCallTitle(call.name),
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f),
+                )
+                ToolStatusLabel(call.status)
+            }
+            Text(
+                text = toolCallDetail(call),
+                style = MaterialTheme.typography.bodyMedium,
+                fontFamily = FontFamily.Monospace,
+            )
+            call.resultText?.let { result ->
+                Text(
+                    text = result,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            when (call.status) {
+                ToolCallStatus.PENDING -> {
+                    if (!hidConnected) {
+                        Text(
+                            text = "No computer connected — running it will fail. Connect on the Dashboard tab.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onAccept) { Text("Accept") }
+                        OutlinedButton(onClick = onReject) { Text("Reject") }
+                    }
+                }
+                ToolCallStatus.RUNNING -> {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Text("Running…", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                else -> Unit
+            }
+        }
+    }
+}
+
+@Composable
+private fun ToolStatusLabel(status: ToolCallStatus) {
+    val (label, color) = when (status) {
+        ToolCallStatus.PENDING -> "Awaiting approval" to MaterialTheme.colorScheme.onTertiaryContainer
+        ToolCallStatus.RUNNING -> "Running" to MaterialTheme.colorScheme.onTertiaryContainer
+        ToolCallStatus.EXECUTED -> "Done" to MaterialTheme.colorScheme.primary
+        ToolCallStatus.FAILED -> "Failed" to MaterialTheme.colorScheme.error
+        ToolCallStatus.REJECTED -> "Rejected" to MaterialTheme.colorScheme.error
+    }
+    Text(text = label, style = MaterialTheme.typography.labelSmall, color = color)
+}
+
+private fun toolCallTitle(name: String): String = when (name) {
+    HidTools.TYPE_TEXT -> "Type text"
+    HidTools.MOVE_POINTER -> "Move pointer"
+    HidTools.MOUSE_PRESS -> "Mouse click"
+    else -> name
+}
+
+private fun toolCallDetail(call: ToolCall): String {
+    val args = runCatching { JSONObject(call.arguments) }.getOrNull() ?: return call.arguments
+    return when (call.name) {
+        HidTools.TYPE_TEXT -> "\"${args.optString("text")}\""
+        HidTools.MOVE_POINTER -> "dx ${args.optInt("dx")}, dy ${args.optInt("dy")}"
+        HidTools.MOUSE_PRESS -> "${args.optString("button")} button"
+        else -> call.arguments
     }
 }
 

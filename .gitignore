@@ -28,6 +28,9 @@ secrets.properties
 apikeys.properties
 keystore.properties
 
+# Run-skill artifacts (screenshots, UI dumps)
+run-artifacts/
+
 # OS
 .DS_Store
 Thumbs.db

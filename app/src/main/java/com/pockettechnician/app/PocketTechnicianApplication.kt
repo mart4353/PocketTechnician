@@ -46,7 +46,7 @@ class PocketTechnicianApplication : Application() {
         }
         applicationScope.launch {
             conversationRepository.load()
-            conversationRepository.ensureTestConversations()
+            conversationRepository.resetTestConversations()
         }
     }
 

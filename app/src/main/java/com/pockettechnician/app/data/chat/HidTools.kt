@@ -11,7 +11,7 @@ import org.json.JSONObject
 object HidTools {
 
     const val TYPE_TEXT = "type_text"
-    const val MOVE_POINTER = "move_pointer"
+    const val MOVE_POINTER_TO = "move_pointer_to"
     const val MOUSE_PRESS = "mouse_press"
 
     // Note: the plain-English description of these tools for the model lives in
@@ -20,14 +20,14 @@ object HidTools {
     /** Anthropic Messages API `tools` array. */
     fun anthropicTools(): JSONArray = JSONArray().apply {
         put(anthropicTool(TYPE_TEXT, typeTextDescription, typeTextSchema()))
-        put(anthropicTool(MOVE_POINTER, movePointerDescription, movePointerSchema()))
+        put(anthropicTool(MOVE_POINTER_TO, movePointerToDescription, movePointerToSchema()))
         put(anthropicTool(MOUSE_PRESS, mousePressDescription, mousePressSchema()))
     }
 
     /** OpenAI / Grok chat-completions `tools` array. */
     fun openAiTools(): JSONArray = JSONArray().apply {
         put(openAiTool(TYPE_TEXT, typeTextDescription, typeTextSchema()))
-        put(openAiTool(MOVE_POINTER, movePointerDescription, movePointerSchema()))
+        put(openAiTool(MOVE_POINTER_TO, movePointerToDescription, movePointerToSchema()))
         put(openAiTool(MOUSE_PRESS, mousePressDescription, mousePressSchema()))
     }
 
@@ -50,8 +50,10 @@ object HidTools {
 
     private const val typeTextDescription =
         "Type the given text on the connected computer using the keyboard."
-    private const val movePointerDescription =
-        "Move the mouse pointer by a relative offset in pixels. Positive dx moves right, positive dy moves down."
+    private const val movePointerToDescription =
+        "Move the mouse pointer to an absolute screen position (x, y) measured in pixels from the top-left corner. " +
+            "The pointer is first homed into the top-left corner, so this jumps to a known location regardless of " +
+            "where it was."
     private const val mousePressDescription =
         "Click a mouse button at the current pointer position."
 
@@ -66,15 +68,15 @@ object HidTools {
         )
         .put("required", JSONArray().put("text"))
 
-    private fun movePointerSchema(): JSONObject = JSONObject()
+    private fun movePointerToSchema(): JSONObject = JSONObject()
         .put("type", "object")
         .put(
             "properties",
             JSONObject()
-                .put("dx", JSONObject().put("type", "integer").put("description", "Horizontal offset in pixels."))
-                .put("dy", JSONObject().put("type", "integer").put("description", "Vertical offset in pixels.")),
+                .put("x", JSONObject().put("type", "integer").put("description", "Target X in pixels from the left edge."))
+                .put("y", JSONObject().put("type", "integer").put("description", "Target Y in pixels from the top edge.")),
         )
-        .put("required", JSONArray().put("dx").put("dy"))
+        .put("required", JSONArray().put("x").put("y"))
 
     private fun mousePressSchema(): JSONObject = JSONObject()
         .put("type", "object")

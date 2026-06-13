@@ -171,10 +171,10 @@ class ChatViewModel(
                 if (hidManager.typeText(text)) ToolCallStatus.EXECUTED to "Typed \"$text\"."
                 else ToolCallStatus.FAILED to "Failed to send keystrokes."
             }
-            HidTools.MOVE_POINTER -> {
-                val dx = args.optInt("dx")
-                val dy = args.optInt("dy")
-                if (hidManager.movePointer(dx, dy)) ToolCallStatus.EXECUTED to "Moved pointer by ($dx, $dy)."
+            HidTools.MOVE_POINTER_TO -> {
+                val x = args.optInt("x")
+                val y = args.optInt("y")
+                if (hidManager.movePointerTo(x, y)) ToolCallStatus.EXECUTED to "Moved pointer to ($x, $y)."
                 else ToolCallStatus.FAILED to "Failed to move pointer."
             }
             HidTools.MOUSE_PRESS -> {

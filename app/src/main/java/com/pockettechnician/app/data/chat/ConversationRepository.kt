@@ -89,15 +89,16 @@ class ConversationRepository(context: Context) {
     }
 
     /**
-     * Seed the four HID tool-call test conversations if they aren't present yet.
-     * Fixed ids keep this idempotent across launches; once a test conversation
-     * exists (even after its call is run) it is left untouched.
+     * Reset the HID tool-call test conversations to their pristine seed state on
+     * every launch. These are throwaway fixtures for exercising the tool-call
+     * approval flow, so any carried-on state — the call already accepted/run,
+     * follow-up turns appended — is discarded and replaced by the original
+     * "awaiting approval" bubbles. Fixed ids make the swap deterministic.
      */
-    suspend fun ensureTestConversations() {
-        val existing = _conversations.value.map { it.id }.toSet()
-        val missing = testConversations().filterNot { it.id in existing }
-        if (missing.isEmpty()) return
-        update { it + missing }
+    suspend fun resetTestConversations() {
+        val seeds = testConversations()
+        val seedIds = seeds.map { it.id }.toSet()
+        update { list -> list.filterNot { it.id in seedIds } + seeds }
     }
 
     private fun testConversations(): List<Conversation> {
@@ -123,14 +124,14 @@ class ConversationRepository(context: Context) {
                 ),
             ),
             convo(
-                id = "test-move-pointer",
-                title = "Test: move pointer",
-                ask = "Move the mouse 50 right and 200 down.",
-                reply = "Will do — moving the pointer by (50, 200). Approve below.",
+                id = "test-move-pointer-to",
+                title = "Test: move pointer to",
+                ask = "Move the mouse to the center of my 1920x1080 screen.",
+                reply = "Will do — homing the pointer, then moving to the center (960, 540). Approve below.",
                 call = ToolCall(
-                    id = "seed-move-pointer",
-                    name = "move_pointer",
-                    arguments = JSONObject().put("dx", 50).put("dy", 200).toString(),
+                    id = "seed-move-pointer-to",
+                    name = "move_pointer_to",
+                    arguments = JSONObject().put("x", 960).put("y", 540).toString(),
                 ),
             ),
             convo(

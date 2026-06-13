@@ -444,7 +444,7 @@ private fun ToolStatusLabel(status: ToolCallStatus) {
 
 private fun toolCallTitle(name: String): String = when (name) {
     HidTools.TYPE_TEXT -> "Type text"
-    HidTools.MOVE_POINTER -> "Move pointer"
+    HidTools.MOVE_POINTER_TO -> "Move pointer to"
     HidTools.MOUSE_PRESS -> "Mouse click"
     else -> name
 }
@@ -453,7 +453,7 @@ private fun toolCallDetail(call: ToolCall): String {
     val args = runCatching { JSONObject(call.arguments) }.getOrNull() ?: return call.arguments
     return when (call.name) {
         HidTools.TYPE_TEXT -> "\"${args.optString("text")}\""
-        HidTools.MOVE_POINTER -> "dx ${args.optInt("dx")}, dy ${args.optInt("dy")}"
+        HidTools.MOVE_POINTER_TO -> "x ${args.optInt("x")}, y ${args.optInt("y")}"
         HidTools.MOUSE_PRESS -> "${args.optString("button")} button"
         else -> call.arguments
     }

@@ -46,7 +46,7 @@ data class HidState(
  *
  * Lifecycle: [start] grabs the BluetoothHidDevice profile proxy and registers
  * our app; the host then either connects on its own or we call [connect] for a
- * bonded device. [typeText] and [movePointer] stream reports once connected.
+ * bonded device. [typeText] and [movePointerTo] stream reports once connected.
  */
 class HidManager(private val context: Context) {
 
@@ -215,9 +215,10 @@ class HidManager(private val context: Context) {
 
     /**
      * Move the pointer by (dx, dy). HID mouse motion is relative, so a large
-     * move is streamed as several reports each clamped to +/-127.
+     * move is streamed as several reports each clamped to +/-127. Internal
+     * primitive only — callers use [movePointerTo] for absolute positioning.
      */
-    suspend fun movePointer(dx: Int, dy: Int): Boolean = withContext(Dispatchers.Default) {
+    private suspend fun movePointer(dx: Int, dy: Int): Boolean = withContext(Dispatchers.Default) {
         val device = hidDevice ?: return@withContext false
         val host = connectedDevice ?: return@withContext false
         if (!hasConnectPermission()) return@withContext false
@@ -232,6 +233,23 @@ class HidManager(private val context: Context) {
             delay(MOUSE_DELAY_MS)
         }
         true
+    }
+
+    /**
+     * Move the pointer to an absolute screen position (x, y) from the top-left.
+     *
+     * Relative HID mice have no concept of absolute coordinates, so we first
+     * "home" the cursor by streaming a large negative move: the host clamps the
+     * pointer at the top-left corner no matter how far we overshoot, giving a
+     * known (0, 0) origin. We then move right/down by (x, y).
+     *
+     * Homing is always reliable. The accuracy of the second leg depends on the
+     * host having pointer acceleration ("enhance pointer precision") disabled —
+     * with acceleration on, the landed position drifts from the requested pixel.
+     */
+    suspend fun movePointerTo(x: Int, y: Int): Boolean {
+        if (!movePointer(-HOME_DISTANCE, -HOME_DISTANCE)) return false
+        return movePointer(x.coerceAtLeast(0), y.coerceAtLeast(0))
     }
 
     /**
@@ -284,5 +302,12 @@ class HidManager(private val context: Context) {
         private const val KEY_DELAY_MS = 12L
         private const val MOUSE_DELAY_MS = 8L
         private const val CLICK_HOLD_MS = 40L
+
+        /**
+         * Distance (px) of the negative "homing" move used to slam the pointer
+         * into the top-left corner before an absolute move. Must exceed the
+         * largest host screen dimension; the host clamps any overshoot.
+         */
+        private const val HOME_DISTANCE = 10_000
     }
 }

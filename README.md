@@ -67,6 +67,10 @@ See [docs/SAFETY.md](docs/SAFETY.md) for the full safety model.
 - **No keys in this repository.** Nothing in the source or git history contains real credentials; `keystore.properties`, `local.properties`, and `*.env`/`*.jks` files are git-ignored.
 - **Screen images go to your configured AI provider.** Anything the camera captures is sent to that third party for interpretation. Review their privacy and data-retention terms, and avoid pointing the camera at credentials or confidential material you do not want sent off-device.
 
+The Dashboard is where you enter and manage those keys. Stored keys are shown masked (only the last few characters), and **Manage API keys** is the single entry point for adding, replacing, or clearing them:
+
+<img src="screenshots/Dashboard.png" alt="Pocket Technician Dashboard showing the masked Claude, OpenAI, and Grok API key entries and the Manage API keys button" width="320">
+
 ## Building
 
 Requirements: JDK 17 and the Android SDK (platform 35, build-tools 35.0.0). Point `local.properties` (or `ANDROID_HOME`) at your SDK, then:
